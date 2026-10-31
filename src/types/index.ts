@@ -199,9 +199,19 @@ export interface AIFeedbackResult {
   importedAt: string;
 }
 
+// 全プロンプト共通の想定難易度
+export type TargetDifficulty = '北大前期' | '北大後期' | '国公立大学標準レベル';
+
+export const TARGET_DIFFICULTIES: TargetDifficulty[] = [
+  '北大前期',
+  '北大後期',
+  '国公立大学標準レベル',
+];
+
 // 全体設定
 export interface AppSettings {
   aiStudioUrl: string;
+  targetDifficulty: TargetDifficulty;
   autoSaveDrafts: boolean;
   dailyGoalCards: number;
   enableSoundEffects: boolean;

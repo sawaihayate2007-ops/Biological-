@@ -4,8 +4,9 @@
  */
 
 import React, { useState, useRef } from 'react';
-import { AppSettings, DBExportData } from '../../types';
+import { AppSettings, DBExportData, TargetDifficulty, TARGET_DIFFICULTIES } from '../../types';
 import { dbService } from '../../services/db';
+import { TARGET_DIFFICULTY_PROFILES } from '../../services/promptGenerators';
 import { ConfirmModal } from '../common/ConfirmModal';
 import {
   Settings,
@@ -19,6 +20,9 @@ import {
   Database,
   FileText,
   ShieldCheck,
+  GraduationCap,
+  Sparkles,
+  Info,
 } from 'lucide-react';
 
 interface SettingsDataViewProps {
@@ -39,6 +43,9 @@ export const SettingsDataView: React.FC<SettingsDataViewProps> = ({
   onDataResetOrRestored,
 }) => {
   const [aiStudioUrl, setAiStudioUrl] = useState(settings.aiStudioUrl);
+  const [targetDifficulty, setTargetDifficulty] = useState<TargetDifficulty>(
+    settings.targetDifficulty || '北大前期'
+  );
   const [dailyGoal, setDailyGoal] = useState(settings.dailyGoalCards || 15);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
@@ -50,10 +57,21 @@ export const SettingsDataView: React.FC<SettingsDataViewProps> = ({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const handleDifficultySelect = async (diff: TargetDifficulty) => {
+    setTargetDifficulty(diff);
+    await onUpdateSettings({
+      ...settings,
+      targetDifficulty: diff,
+    });
+    setActionMessage(`想定難易度を「${diff}」に変更しました。全プロンプトに即座に反映されます。`);
+    setTimeout(() => setActionMessage(null), 3000);
+  };
+
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     await onUpdateSettings({
       ...settings,
+      targetDifficulty,
       aiStudioUrl: aiStudioUrl.trim() || 'https://aistudio.google.com/u/2/prompts/new_chat',
       dailyGoalCards: Number(dailyGoal) || 15,
     });
@@ -262,13 +280,100 @@ export const SettingsDataView: React.FC<SettingsDataViewProps> = ({
       </div>
 
       {/* External AI Settings */}
-      <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-2xs space-y-4">
-        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 border-b border-slate-100 pb-2">
-          <ExternalLink className="w-4 h-4 text-emerald-600" />
-          外部AI連携設定
-        </h3>
+      <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-2xs space-y-5">
+        <div className="border-b border-slate-100 pb-3">
+          <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+            <ExternalLink className="w-4 h-4 text-emerald-600" />
+            外部AI連携 & 想定難易度設定
+          </h3>
+          <p className="text-[11px] text-slate-500 mt-0.5">
+            すべての外部AI用プロンプト（作問・採点・教材生成）に共通して適用される想定難易度および連携先URLの設定
+          </p>
+        </div>
 
-        <form onSubmit={handleSaveSettings} className="space-y-4 text-xs">
+        {/* 1. Common Target Difficulty Selection */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+              <GraduationCap className="w-4 h-4 text-emerald-700" />
+              <span>全プロンプト共通の「想定難易度」設定</span>
+            </label>
+            <span className="text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
+              現在適用中: {targetDifficulty}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {TARGET_DIFFICULTIES.map((diff) => {
+              const isSelected = targetDifficulty === diff;
+              const profile = TARGET_DIFFICULTY_PROFILES[diff];
+
+              return (
+                <div
+                  key={diff}
+                  onClick={() => handleDifficultySelect(diff)}
+                  className={`p-3.5 rounded-lg border-2 cursor-pointer transition-all flex flex-col justify-between ${
+                    isSelected
+                      ? 'border-emerald-600 bg-emerald-50/40 shadow-xs ring-2 ring-emerald-200'
+                      : 'border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50/60'
+                  }`}
+                >
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-extrabold text-sm text-slate-900">{diff}</span>
+                      {isSelected ? (
+                        <span className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xs">
+                          <Check className="w-3.5 h-3.5 stroke-[3]" />
+                        </span>
+                      ) : (
+                        <span className="w-5 h-5 rounded-full border border-slate-300" />
+                      )}
+                    </div>
+                    <p className="text-xs font-semibold text-emerald-800 leading-snug">
+                      {profile.shortDesc}
+                    </p>
+                    <div className="space-y-1.5 pt-1 text-[11px] text-slate-600 leading-relaxed border-t border-slate-100">
+                      <div>
+                        <strong className="text-slate-800">要求水準: </strong>
+                        {profile.requiredStandard}
+                      </div>
+                      <div>
+                        <strong className="text-slate-800">論理・因果: </strong>
+                        {profile.logicRequirement}
+                      </div>
+                      <div>
+                        <strong className="text-slate-800">採点厳しさ: </strong>
+                        {profile.rubricStrictness}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 pt-2 border-t border-slate-100/80 flex items-center justify-between text-[10px] text-slate-500">
+                    <span>模範解答: {profile.modelAnswerQuality.slice(0, 24)}...</span>
+                    {isSelected && (
+                      <span className="font-bold text-emerald-700">選択中</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="p-3 bg-slate-50 rounded border border-slate-200 text-[11px] text-slate-600 space-y-1">
+            <div className="font-bold text-slate-700 flex items-center gap-1">
+              <Info className="w-3.5 h-3.5 text-emerald-600" />
+              <span>プロンプト埋め込みと採点についての注意事項</span>
+            </div>
+            <ul className="list-disc list-inside space-y-0.5 text-slate-500 pl-1">
+              <li>難易度を変更すると、通常論述問題・知識論述カードの作問・採点など、すべてのプロンプトに即座に反映されます。</li>
+              <li>採点プロンプトでは実際の大学公式基準を偽らず、想定難易度に応じた学習用参考評価であることを明記します。</li>
+              <li>出題自体の指定字数や条件を最優先とし、難易度設定のみを理由に条件を変更しないようAIに指示されます。</li>
+            </ul>
+          </div>
+        </div>
+
+        {/* 2. URL & Goal Form */}
+        <form onSubmit={handleSaveSettings} className="space-y-4 text-xs pt-2 border-t border-slate-100">
           <div className="space-y-1">
             <label className="font-bold text-slate-700">Google AI Studio 遷移先URL</label>
             <input

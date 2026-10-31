@@ -8,6 +8,7 @@ import {
   StandardProblem,
   ProblemSubmission,
   AIFeedbackResult,
+  TargetDifficulty,
 } from '../../types';
 import { ContentBlockRenderer } from '../common/ContentBlockRenderer';
 import { PromptCopyModal } from '../common/PromptCopyModal';
@@ -36,6 +37,8 @@ interface StandardProblemDetailViewProps {
   onEdit: (problem: StandardProblem) => void;
   onSaveSubmission: (submission: ProblemSubmission) => Promise<void>;
   aiStudioUrl: string;
+  targetDifficulty?: TargetDifficulty;
+  onChangeDifficulty?: (difficulty: TargetDifficulty) => void;
 }
 
 export const StandardProblemDetailView: React.FC<StandardProblemDetailViewProps> = ({
@@ -45,6 +48,8 @@ export const StandardProblemDetailView: React.FC<StandardProblemDetailViewProps>
   onEdit,
   onSaveSubmission,
   aiStudioUrl,
+  targetDifficulty = '北大前期',
+  onChangeDifficulty,
 }) => {
   const draftKey = `bio_draft_sp_${problem.id}`;
   const [answerText, setAnswerText] = useState(() => {
@@ -98,6 +103,7 @@ export const StandardProblemDetailView: React.FC<StandardProblemDetailViewProps>
   const scoringPrompt = generateStandardProblemScoringPrompt({
     problem,
     userAnswer: answerText,
+    targetDifficulty,
   });
 
   return (
@@ -478,6 +484,8 @@ export const StandardProblemDetailView: React.FC<StandardProblemDetailViewProps>
         description="共通資料・設問文・採点基準・あなたの答案が自動挿入されています（※大学名は一切含まれません）"
         promptText={scoringPrompt}
         aiStudioUrl={aiStudioUrl}
+        targetDifficulty={targetDifficulty}
+        onChangeDifficulty={onChangeDifficulty}
       />
 
       {/* AI Feedback Import Modal */}

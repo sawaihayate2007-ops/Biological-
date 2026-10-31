@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { KnowledgeCard, AIFeedbackResult } from '../../types';
+import { KnowledgeCard, AIFeedbackResult, TargetDifficulty } from '../../types';
 import { generateComprehensiveScoringPrompt } from '../../services/promptGenerators';
 import { PromptCopyModal } from '../common/PromptCopyModal';
 import { AIFeedbackModal } from '../common/AIFeedbackModal';
@@ -33,6 +33,8 @@ interface ComprehensiveEssayViewProps {
     aiFeedback?: AIFeedbackResult
   ) => Promise<void>;
   aiStudioUrl: string;
+  targetDifficulty?: TargetDifficulty;
+  onChangeDifficulty?: (difficulty: TargetDifficulty) => void;
 }
 
 export const ComprehensiveEssayView: React.FC<ComprehensiveEssayViewProps> = ({
@@ -40,6 +42,8 @@ export const ComprehensiveEssayView: React.FC<ComprehensiveEssayViewProps> = ({
   onBack,
   onSaveAnswer,
   aiStudioUrl,
+  targetDifficulty = '北大前期',
+  onChangeDifficulty,
 }) => {
   // Check if draft exists in localStorage
   const draftKey = `bio_draft_kc_${card.id}`;
@@ -85,6 +89,7 @@ export const ComprehensiveEssayView: React.FC<ComprehensiveEssayViewProps> = ({
   const scoringPrompt = generateComprehensiveScoringPrompt({
     card,
     userAnswer,
+    targetDifficulty,
   });
 
   return (
@@ -392,6 +397,8 @@ export const ComprehensiveEssayView: React.FC<ComprehensiveEssayViewProps> = ({
         description="問題文・模範解答・採点基準・あなたの答案が自動挿入されています"
         promptText={scoringPrompt}
         aiStudioUrl={aiStudioUrl}
+        targetDifficulty={targetDifficulty}
+        onChangeDifficulty={onChangeDifficulty}
       />
 
       {/* AI Feedback Import Modal */}

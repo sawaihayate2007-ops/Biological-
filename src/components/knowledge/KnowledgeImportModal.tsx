@@ -9,8 +9,13 @@ import {
   BiologyField,
   BIOLOGY_FIELDS,
   DifficultyLevel,
+  TargetDifficulty,
+  TARGET_DIFFICULTIES,
 } from '../../types';
-import { generateKnowledgeMaterialPrompt } from '../../services/promptGenerators';
+import {
+  generateKnowledgeMaterialPrompt,
+  TARGET_DIFFICULTY_PROFILES,
+} from '../../services/promptGenerators';
 import { parseKnowledgeMarkdown } from '../../services/markdownParser';
 import {
   X,
@@ -25,6 +30,7 @@ import {
   Trash2,
   ChevronDown,
   ChevronUp,
+  GraduationCap,
 } from 'lucide-react';
 
 interface KnowledgeImportModalProps {
@@ -33,6 +39,8 @@ interface KnowledgeImportModalProps {
   onImportCards: (cards: KnowledgeCard[]) => Promise<void>;
   existingCards: KnowledgeCard[];
   aiStudioUrl: string;
+  targetDifficulty?: TargetDifficulty;
+  onChangeDifficulty?: (difficulty: TargetDifficulty) => void;
 }
 
 export const KnowledgeImportModal: React.FC<KnowledgeImportModalProps> = ({
@@ -41,6 +49,8 @@ export const KnowledgeImportModal: React.FC<KnowledgeImportModalProps> = ({
   onImportCards,
   existingCards,
   aiStudioUrl,
+  targetDifficulty = '北大前期',
+  onChangeDifficulty,
 }) => {
   const [activeTab, setActiveTab] = useState<'prompt' | 'paste' | 'preview'>('prompt');
 
@@ -69,7 +79,7 @@ export const KnowledgeImportModal: React.FC<KnowledgeImportModalProps> = ({
     field: promptField,
     chapter: promptChapter,
     theme: promptTheme,
-    difficulty: promptDifficulty,
+    targetDifficulty,
     numThemes,
     additionalConditions: promptExtra,
   });
@@ -238,18 +248,39 @@ export const KnowledgeImportModal: React.FC<KnowledgeImportModalProps> = ({
               </div>
 
               <div className="space-y-1">
-                <label className="font-bold text-slate-700">想定難易度</label>
-                <select
-                  value={promptDifficulty}
-                  onChange={(e) => setPromptDifficulty(e.target.value)}
-                  className="w-full p-2 border border-slate-300 rounded focus:border-emerald-600 focus:outline-none bg-white text-slate-800"
-                >
-                  <option value="難関国公立大学二次試験レベル（東京大学・京都大学等）">
-                    難関国公立大学（東大・京大・旧帝・医学部）
-                  </option>
-                  <option value="国公立大学標準二次試験レベル">国公立大学標準レベル</option>
-                  <option value="共通テスト〜二次試験基礎レベル">基礎〜標準レベル</option>
-                </select>
+                <label className="font-bold text-slate-700 flex items-center justify-between">
+                  <span className="flex items-center gap-1">
+                    <GraduationCap className="w-3.5 h-3.5 text-emerald-600" />
+                    想定難易度（全プロンプト共通）
+                  </span>
+                  <span className="text-[10px] text-emerald-800 font-bold bg-emerald-100 px-1.5 py-0.5 rounded">
+                    現在: {targetDifficulty}
+                  </span>
+                </label>
+                <div className="grid grid-cols-3 gap-1">
+                  {TARGET_DIFFICULTIES.map((diff) => {
+                    const isSelected = targetDifficulty === diff;
+                    return (
+                      <button
+                        key={diff}
+                        type="button"
+                        onClick={() => onChangeDifficulty?.(diff)}
+                        className={`py-1.5 px-1 rounded text-xs font-bold transition-all text-center border ${
+                          isSelected
+                            ? 'bg-emerald-700 text-white border-emerald-800 shadow-xs ring-2 ring-emerald-300'
+                            : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
+                        }`}
+                      >
+                        {diff}
+                      </button>
+                    );
+                  })}
+                </div>
+                {TARGET_DIFFICULTY_PROFILES[targetDifficulty] && (
+                  <p className="text-[10px] text-slate-500 pt-0.5 leading-tight">
+                    {TARGET_DIFFICULTY_PROFILES[targetDifficulty].shortDesc}
+                  </p>
+                )}
               </div>
 
               <div className="space-y-1">

@@ -8,6 +8,7 @@ import {
   StandardProblem,
   BiologyField,
   BIOLOGY_FIELDS,
+  TargetDifficulty,
 } from '../../types';
 import { StandardProblemEditor } from './StandardProblemEditor';
 import { StandardImportModal } from './StandardImportModal';
@@ -32,6 +33,8 @@ interface StandardProblemListViewProps {
   onSaveProblem: (problem: StandardProblem) => Promise<void>;
   onDeleteProblem: (id: string) => Promise<void>;
   aiStudioUrl: string;
+  targetDifficulty?: TargetDifficulty;
+  onChangeDifficulty?: (difficulty: TargetDifficulty) => void;
 }
 
 export const StandardProblemListView: React.FC<StandardProblemListViewProps> = ({
@@ -41,6 +44,8 @@ export const StandardProblemListView: React.FC<StandardProblemListViewProps> = (
   onSaveProblem,
   onDeleteProblem,
   aiStudioUrl,
+  targetDifficulty = '北大前期',
+  onChangeDifficulty,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedField, setSelectedField] = useState<string>('all');
@@ -321,6 +326,8 @@ export const StandardProblemListView: React.FC<StandardProblemListViewProps> = (
           onSelectProblem(prob);
         }}
         aiStudioUrl={aiStudioUrl}
+        targetDifficulty={targetDifficulty}
+        onChangeDifficulty={onChangeDifficulty}
       />
 
       {/* Delete Confirmation */}

@@ -11,6 +11,7 @@ import {
   BIOLOGY_FIELDS,
   DifficultyLevel,
   CARD_TYPE_LABELS,
+  TargetDifficulty,
 } from '../../types';
 import { KnowledgeImportModal } from './KnowledgeImportModal';
 import { KnowledgeCardEditorModal } from './KnowledgeCardEditorModal';
@@ -43,6 +44,8 @@ interface KnowledgeListViewProps {
   onOpenComprehensive: (card: KnowledgeCard) => void;
   onExportMarkdown: (field?: BiologyField) => Promise<void>;
   aiStudioUrl: string;
+  targetDifficulty?: TargetDifficulty;
+  onChangeDifficulty?: (difficulty: TargetDifficulty) => void;
 }
 
 export const KnowledgeListView: React.FC<KnowledgeListViewProps> = ({
@@ -54,6 +57,8 @@ export const KnowledgeListView: React.FC<KnowledgeListViewProps> = ({
   onOpenComprehensive,
   onExportMarkdown,
   aiStudioUrl,
+  targetDifficulty = '北大前期',
+  onChangeDifficulty,
 }) => {
   // Filters
   const [selectedField, setSelectedField] = useState<string>('all');
@@ -498,6 +503,8 @@ export const KnowledgeListView: React.FC<KnowledgeListViewProps> = ({
         onImportCards={onImportBatch}
         existingCards={cards}
         aiStudioUrl={aiStudioUrl}
+        targetDifficulty={targetDifficulty}
+        onChangeDifficulty={onChangeDifficulty}
       />
 
       {/* Editor Modal */}

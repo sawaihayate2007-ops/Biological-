@@ -27,6 +27,7 @@ export interface DBExportData {
 
 const DEFAULT_SETTINGS: AppSettings = {
   aiStudioUrl: 'https://aistudio.google.com/u/2/prompts/new_chat',
+  targetDifficulty: '北大前期',
   autoSaveDrafts: true,
   dailyGoalCards: 15,
   enableSoundEffects: true,
@@ -348,6 +349,9 @@ class DatabaseService {
             // If it had the old default without user account path, upgrade to the requested user link
             if (val.aiStudioUrl === 'https://aistudio.google.com/prompts/new_chat') {
               val.aiStudioUrl = 'https://aistudio.google.com/u/2/prompts/new_chat';
+            }
+            if (!val.targetDifficulty) {
+              val.targetDifficulty = DEFAULT_SETTINGS.targetDifficulty;
             }
             resolve({ ...DEFAULT_SETTINGS, ...val });
           } else {

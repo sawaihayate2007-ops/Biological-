@@ -12,6 +12,7 @@ import {
   ReviewRating,
   AIFeedbackResult,
   BiologyField,
+  TargetDifficulty,
 } from './types';
 import { dbService } from './services/db';
 import { Navbar, NavTab } from './components/Navbar';
@@ -32,6 +33,7 @@ export default function App() {
   const [submissions, setSubmissions] = useState<ProblemSubmission[]>([]);
   const [settings, setSettings] = useState<AppSettings>({
     aiStudioUrl: 'https://aistudio.google.com/u/2/prompts/new_chat',
+    targetDifficulty: '北大前期',
     autoSaveDrafts: true,
     dailyGoalCards: 15,
     enableSoundEffects: true,
@@ -165,6 +167,12 @@ export default function App() {
     setSettings(newSettings);
   };
 
+  const handleUpdateDifficulty = async (newDifficulty: TargetDifficulty) => {
+    const updated: AppSettings = { ...settings, targetDifficulty: newDifficulty };
+    setSettings(updated);
+    await dbService.saveSettings(updated);
+  };
+
   const handleExportMarkdown = async (field?: BiologyField) => {
     const md = await dbService.exportKnowledgeCardsAsMarkdown(field);
     const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
@@ -201,6 +209,8 @@ export default function App() {
         }}
         dueCardsCount={dueCardsCount}
         aiStudioUrl={settings.aiStudioUrl}
+        targetDifficulty={settings.targetDifficulty}
+        onChangeDifficulty={handleUpdateDifficulty}
       />
 
       {/* Main Content Area */}
@@ -248,6 +258,8 @@ export default function App() {
                 onBack={() => setComprehensiveCard(null)}
                 onSaveAnswer={handleSaveComprehensiveAnswer}
                 aiStudioUrl={settings.aiStudioUrl}
+                targetDifficulty={settings.targetDifficulty}
+                onChangeDifficulty={handleUpdateDifficulty}
               />
             ) : (
               <KnowledgeListView
@@ -259,6 +271,8 @@ export default function App() {
                 onOpenComprehensive={(card) => setComprehensiveCard(card)}
                 onExportMarkdown={handleExportMarkdown}
                 aiStudioUrl={settings.aiStudioUrl}
+                targetDifficulty={settings.targetDifficulty}
+                onChangeDifficulty={handleUpdateDifficulty}
               />
             )}
           </>
@@ -278,6 +292,8 @@ export default function App() {
                 }}
                 onSaveSubmission={handleSaveSubmission}
                 aiStudioUrl={settings.aiStudioUrl}
+                targetDifficulty={settings.targetDifficulty}
+                onChangeDifficulty={handleUpdateDifficulty}
               />
             ) : (
               <StandardProblemListView
@@ -287,6 +303,8 @@ export default function App() {
                 onSaveProblem={handleSaveProblem}
                 onDeleteProblem={handleDeleteProblem}
                 aiStudioUrl={settings.aiStudioUrl}
+                targetDifficulty={settings.targetDifficulty}
+                onChangeDifficulty={handleUpdateDifficulty}
               />
             )}
           </>

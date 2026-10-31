@@ -8,8 +8,13 @@ import {
   StandardProblem,
   BiologyField,
   BIOLOGY_FIELDS,
+  TargetDifficulty,
+  TARGET_DIFFICULTIES,
 } from '../../types';
-import { generateStandardProblemCreationPrompt } from '../../services/promptGenerators';
+import {
+  generateStandardProblemCreationPrompt,
+  TARGET_DIFFICULTY_PROFILES,
+} from '../../services/promptGenerators';
 import { parseStandardProblemMarkdown } from '../../services/markdownParser';
 import {
   X,
@@ -21,6 +26,7 @@ import {
   AlertTriangle,
   CheckCircle,
   Tag as TagIcon,
+  GraduationCap,
 } from 'lucide-react';
 
 interface StandardImportModalProps {
@@ -28,6 +34,8 @@ interface StandardImportModalProps {
   onClose: () => void;
   onImportProblem: (problem: StandardProblem) => Promise<void>;
   aiStudioUrl: string;
+  targetDifficulty?: TargetDifficulty;
+  onChangeDifficulty?: (difficulty: TargetDifficulty) => void;
 }
 
 export const StandardImportModal: React.FC<StandardImportModalProps> = ({
@@ -35,6 +43,8 @@ export const StandardImportModal: React.FC<StandardImportModalProps> = ({
   onClose,
   onImportProblem,
   aiStudioUrl,
+  targetDifficulty = '北大前期',
+  onChangeDifficulty,
 }) => {
   const [activeTab, setActiveTab] = useState<'prompt' | 'paste' | 'preview'>('prompt');
 
@@ -62,6 +72,7 @@ export const StandardImportModal: React.FC<StandardImportModalProps> = ({
     field,
     topic,
     tags: currentTags,
+    targetDifficulty,
   });
 
   const handleCopyPrompt = async () => {
@@ -186,6 +197,43 @@ export const StandardImportModal: React.FC<StandardImportModalProps> = ({
                 <span>
                   出題元は「作AI」として設定され、プロンプト内に大学名は一切出力されません。
                 </span>
+              </div>
+
+              {/* Target Difficulty Selector */}
+              <div className="space-y-1.5 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                <label className="font-bold text-slate-700 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <GraduationCap className="w-3.5 h-3.5 text-emerald-600" />
+                    想定難易度（全プロンプト共通設定）
+                  </span>
+                  <span className="text-[10px] text-emerald-800 font-bold bg-emerald-100 px-1.5 py-0.5 rounded">
+                    現在: {targetDifficulty}
+                  </span>
+                </label>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {TARGET_DIFFICULTIES.map((diff) => {
+                    const isSelected = targetDifficulty === diff;
+                    return (
+                      <button
+                        key={diff}
+                        type="button"
+                        onClick={() => onChangeDifficulty?.(diff)}
+                        className={`py-1.5 px-1 rounded text-xs font-bold transition-all text-center border ${
+                          isSelected
+                            ? 'bg-emerald-700 text-white border-emerald-800 shadow-xs ring-2 ring-emerald-300'
+                            : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
+                        }`}
+                      >
+                        {diff}
+                      </button>
+                    );
+                  })}
+                </div>
+                {TARGET_DIFFICULTY_PROFILES[targetDifficulty] && (
+                  <p className="text-[10px] text-slate-500 pt-0.5 leading-tight">
+                    {TARGET_DIFFICULTY_PROFILES[targetDifficulty].shortDesc}
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

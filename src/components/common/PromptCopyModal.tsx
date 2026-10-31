@@ -4,7 +4,9 @@
  */
 
 import React, { useState } from 'react';
-import { Copy, Check, ExternalLink, X, Sparkles } from 'lucide-react';
+import { Copy, Check, ExternalLink, X, Sparkles, GraduationCap } from 'lucide-react';
+import { TargetDifficulty, TARGET_DIFFICULTIES } from '../../types';
+import { TARGET_DIFFICULTY_PROFILES } from '../../services/promptGenerators';
 
 interface PromptCopyModalProps {
   isOpen: boolean;
@@ -13,6 +15,8 @@ interface PromptCopyModalProps {
   description: string;
   promptText: string;
   aiStudioUrl: string;
+  targetDifficulty?: TargetDifficulty;
+  onChangeDifficulty?: (difficulty: TargetDifficulty) => void;
 }
 
 export const PromptCopyModal: React.FC<PromptCopyModalProps> = ({
@@ -22,6 +26,8 @@ export const PromptCopyModal: React.FC<PromptCopyModalProps> = ({
   description,
   promptText,
   aiStudioUrl,
+  targetDifficulty,
+  onChangeDifficulty,
 }) => {
   const [copied, setCopied] = useState(false);
 
@@ -46,7 +52,11 @@ export const PromptCopyModal: React.FC<PromptCopyModalProps> = ({
   };
 
   const handleOpenAIStudio = () => {
-    window.open(aiStudioUrl || 'https://aistudio.google.com/u/2/prompts/new_chat', '_blank', 'noopener,noreferrer');
+    window.open(
+      aiStudioUrl || 'https://aistudio.google.com/u/2/prompts/new_chat',
+      '_blank',
+      'noopener,noreferrer'
+    );
   };
 
   return (
@@ -55,7 +65,7 @@ export const PromptCopyModal: React.FC<PromptCopyModalProps> = ({
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-lg shadow-xl border border-slate-200 max-w-2xl w-full max-h-[90vh] flex flex-col"
+        className="bg-white rounded-lg shadow-xl border border-slate-200 max-w-2xl w-full max-h-[92vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -80,21 +90,62 @@ export const PromptCopyModal: React.FC<PromptCopyModalProps> = ({
         {/* Info Banner */}
         <div className="bg-slate-50 px-6 py-2.5 border-b border-slate-100 flex items-center justify-between text-xs text-slate-600">
           <span>
-            ①「プロンプトをコピー」を押す → ②「Google AI Studioを開く」で外部AIへ貼り付けて実行
+            ① 想定難易度を確認・選択 → ②「プロンプトをコピー」→ ③「Google AI Studioを開く」で実行
           </span>
-          <span className="text-[11px] text-emerald-700 font-medium">※AI API連携不要</span>
+          <span className="text-[11px] text-emerald-700 font-medium hidden sm:inline">※AI API連携不要</span>
         </div>
+
+        {/* Difficulty Selector Banner */}
+        {targetDifficulty && (
+          <div className="bg-emerald-50/50 border-b border-emerald-100 px-6 py-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+                <GraduationCap className="w-4 h-4 text-emerald-700" />
+                <span>共通の想定難易度設定:</span>
+              </div>
+              <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded">
+                現在適用中: {targetDifficulty}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              {TARGET_DIFFICULTIES.map((diff) => {
+                const isSelected = targetDifficulty === diff;
+                return (
+                  <button
+                    key={diff}
+                    type="button"
+                    onClick={() => onChangeDifficulty?.(diff)}
+                    className={`py-1.5 px-2 rounded text-xs font-bold transition-all text-center flex flex-col items-center justify-center border ${
+                      isSelected
+                        ? 'bg-emerald-700 text-white border-emerald-800 shadow-xs ring-2 ring-emerald-300'
+                        : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    <span>{diff}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {TARGET_DIFFICULTY_PROFILES[targetDifficulty] && (
+              <p className="text-[11px] text-slate-600 leading-tight">
+                {TARGET_DIFFICULTY_PROFILES[targetDifficulty].shortDesc}
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Prompt Content */}
         <div className="flex-1 overflow-y-auto p-6 space-y-3">
           <div className="flex items-center justify-between">
-            <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-              プロンプト全文プレビュー ({promptText.length}文字)
+            <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+              <span>プロンプト全文プレビュー</span>
+              <span className="text-emerald-700 font-normal font-mono">({promptText.length}文字)</span>
             </label>
-            <span className="text-xs text-slate-400">ワンタップで全文クリップボードへコピー可能</span>
+            <span className="text-xs text-slate-400">難易度変更で即時反映されます</span>
           </div>
           <div className="relative">
-            <pre className="w-full h-80 p-4 bg-slate-900 text-slate-100 rounded text-xs font-mono leading-relaxed overflow-y-auto whitespace-pre-wrap select-all selection:bg-emerald-600 selection:text-white border border-slate-800">
+            <pre className="w-full h-72 sm:h-80 p-4 bg-slate-900 text-slate-100 rounded text-xs font-mono leading-relaxed overflow-y-auto whitespace-pre-wrap select-all selection:bg-emerald-600 selection:text-white border border-slate-800">
               {promptText}
             </pre>
           </div>
@@ -103,7 +154,7 @@ export const PromptCopyModal: React.FC<PromptCopyModalProps> = ({
         {/* Footer Actions */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-6 py-4 bg-slate-50 border-t border-slate-100">
           <div className="text-xs text-slate-500">
-            コピー後、AIの出力結果（Markdown）をアプリ内の取り込み欄に貼り付けてください。
+            コピー後、AIの出力結果をアプリ内の取り込み欄に貼り付けてください。
           </div>
           <div className="flex items-center gap-3 w-full sm:w-auto">
             <button
