@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <title>大学受験生物 論述学習システム</title>
+    <script>
+      // Single Page Apps for GitHub Pages
+      // Redirects 404 to the app root preserving path and query
+      const path = window.location.pathname;
+      const origin = window.location.origin;
+      const repoName = path.split('/')[1] || '';
+      
+      // If deployed at username.github.io/repo/
+      if (repoName && !path.endsWith('/')) {
+        window.location.replace(origin + '/' + repoName + '/');
+      } else {
+        window.location.replace('./');
+      }
+    </script>
+  </head>
+  <body>
+    <p>リダイレクト中...</p>
+  </body>
+</html>
