@@ -4,18 +4,13 @@
     <meta charset="utf-8" />
     <title>大学受験生物 論述学習システム</title>
     <script>
-      // Single Page Apps for GitHub Pages
-      // Redirects 404 to the app root preserving path and query
-      const path = window.location.pathname;
+      // Single Page Apps redirect for GitHub Pages
       const origin = window.location.origin;
-      const repoName = path.split('/')[1] || '';
+      const pathname = window.location.pathname;
+      const repoName = 'Biological-';
       
-      // If deployed at username.github.io/repo/
-      if (repoName && !path.endsWith('/')) {
-        window.location.replace(origin + '/' + repoName + '/');
-      } else {
-        window.location.replace('./');
-      }
+      // Redirect to repository root with trailing slash
+      window.location.replace(origin + '/' + repoName + '/');
     </script>
   </head>
   <body>
