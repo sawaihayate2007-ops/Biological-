@@ -319,7 +319,60 @@ export function parseStandardProblemMarkdown(rawText: string): ParseResult<Stand
     };
   }
 
-  const lines = rawText.split('\n');
+  const allLines = rawText.split('\n');
+
+  // 「問題1」「問題2」等の開始マーカーで複数問題を分割する（マーカーが無ければ従来通り1問として扱う）
+  const chunks: string[][] = [];
+  let current: string[] = [];
+  let sawMarker = false;
+  const flush = () => {
+    if (current.some((l) => l.trim().length > 0)) chunks.push(current);
+    current = [];
+  };
+  for (const line of allLines) {
+    const t = line.trim();
+    if (!t.startsWith('【') && /^(?:#+\s*)?問題\s*(\d+|[A-Za-z]+)\s*$/.test(t)) {
+      sawMarker = true;
+      // マーカー前の塊が問題そのもの（問題タイトル/問題文を含む）なら独立した問題として確定。
+      // そうでなければ共通ヘッダーとして次の問題に引き継ぐ。
+      const joined = current.join('\n');
+      if (joined.includes('問題タイトル') || joined.includes('【問題文】')) {
+        flush();
+      }
+      continue;
+    }
+    current.push(line);
+  }
+  flush();
+  if (!sawMarker) {
+    chunks.length = 0;
+    chunks.push(allLines);
+  }
+
+  const problems: StandardProblem[] = [];
+  chunks.forEach((chunkLines, i) => {
+    const p = parseOneStandardProblem(chunkLines, i, warnings);
+    if (p) problems.push(p);
+  });
+
+  if (problems.length === 0) {
+    errors.push('問題が解析できませんでした。指定フォーマットをご確認ください。');
+  }
+
+  return {
+    success: problems.length > 0,
+    data: problems,
+    errors,
+    warnings,
+    rawText,
+  };
+}
+
+function parseOneStandardProblem(
+  lines: string[],
+  index: number,
+  warnings: string[]
+): StandardProblem | null {
 
   let university = '大学入試予想問題';
   let year = new Date().getFullYear();
@@ -467,7 +520,7 @@ export function parseStandardProblemMarkdown(rawText: string): ParseResult<Stand
   }
 
   const problem: StandardProblem = {
-    id: `sp-import-${Date.now()}`,
+    id: `sp-import-${Date.now()}-${index}-${Math.random().toString(36).substring(2, 6)}`,
     title,
     field,
     theme,
@@ -484,13 +537,7 @@ export function parseStandardProblemMarkdown(rawText: string): ParseResult<Stand
     updatedAt: new Date().toISOString(),
   };
 
-  return {
-    success: true,
-    data: [problem],
-    errors,
-    warnings,
-    rawText,
-  };
+  return problem;
 }
 
 /**

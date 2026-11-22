@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   StandardProblem,
   BiologyField,
@@ -56,7 +56,10 @@ export const StandardImportModal: React.FC<StandardImportModalProps> = ({
 
   // Paste & Parse State
   const [rawMarkdown, setRawMarkdown] = useState('');
-  const [parsedProblem, setParsedProblem] = useState<StandardProblem | null>(null);
+  const [parsedProblems, setParsedProblems] = useState<StandardProblem[]>([]);
+  const [selectedProblemIds, setSelectedProblemIds] = useState<Set<string>>(new Set());
+  const [expandedProblemId, setExpandedProblemId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -90,31 +93,85 @@ export const StandardImportModal: React.FC<StandardImportModalProps> = ({
     window.open(aiStudioUrl || 'https://aistudio.google.com/u/2/prompts/new_chat', '_blank', 'noopener,noreferrer');
   };
 
-  const handleParse = () => {
-    setErrors([]);
-    setWarnings([]);
-
-    const res = parseStandardProblemMarkdown(rawMarkdown);
-    if (!res.success || res.data.length === 0) {
-      setErrors(res.errors.length > 0 ? res.errors : ['問題の解析に失敗しました。']);
-      setWarnings(res.warnings);
+  const applyParseResult = (
+    problems: StandardProblem[],
+    errs: string[],
+    warns: string[]
+  ) => {
+    if (problems.length === 0) {
+      setErrors(errs.length > 0 ? errs : ['問題の解析に失敗しました。']);
+      setWarnings(warns);
       return;
     }
-
-    setWarnings(res.warnings);
-    setParsedProblem(res.data[0]);
+    setWarnings(warns);
+    setParsedProblems(problems);
+    setSelectedProblemIds(new Set(problems.map((p) => p.id)));
+    setExpandedProblemId(problems[0].id);
     setActiveTab('preview');
   };
 
+  const handleParse = (text?: string) => {
+    setErrors([]);
+    setWarnings([]);
+    const res = parseStandardProblemMarkdown(text ?? rawMarkdown);
+    applyParseResult(res.data, res.errors, res.warnings);
+  };
+
+  // 複数Markdownファイルの一括読み込み（ファイルごとに解析して合体する）
+  const handleFilesSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (files.length === 0) return;
+    setErrors([]);
+    setWarnings([]);
+    const allProblems: StandardProblem[] = [];
+    const allErrors: string[] = [];
+    const allWarnings: string[] = [];
+    for (const f of files) {
+      try {
+        const text = await f.text();
+        const res = parseStandardProblemMarkdown(text);
+        if (res.data.length === 0) {
+          allErrors.push(`「${f.name}」から問題を解析できませんでした。`);
+        }
+        allProblems.push(...res.data);
+        allWarnings.push(...res.warnings);
+      } catch {
+        allErrors.push(`「${f.name}」の読み込みに失敗しました。`);
+      }
+    }
+    if (allProblems.length > 0) {
+      setRawMarkdown('');
+      applyParseResult(allProblems, [], allWarnings);
+    } else {
+      setErrors(allErrors);
+      setWarnings(allWarnings);
+    }
+  };
+
+  const handleToggleProblemSelection = (id: string) => {
+    const next = new Set(selectedProblemIds);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    setSelectedProblemIds(next);
+  };
+
   const handleCommit = async () => {
-    if (!parsedProblem) return;
+    const targets = parsedProblems.filter((p) => selectedProblemIds.has(p.id));
+    if (targets.length === 0) return;
 
     setIsSubmitting(true);
     try {
-      await onImportProblem(parsedProblem);
+      for (const p of targets) {
+        await onImportProblem(p);
+      }
       onClose();
       setRawMarkdown('');
-      setParsedProblem(null);
+      setParsedProblems([]);
+      setSelectedProblemIds(new Set());
       setActiveTab('prompt');
     } catch (e: any) {
       setErrors([e.message || '保存中にエラーが発生しました。']);
@@ -176,7 +233,7 @@ export const StandardImportModal: React.FC<StandardImportModalProps> = ({
           </button>
           <button
             onClick={() => setActiveTab('preview')}
-            disabled={!parsedProblem}
+            disabled={parsedProblems.length === 0}
             className={`py-3 px-4 border-b-2 flex items-center gap-1.5 transition-colors ${
               activeTab === 'preview'
                 ? 'border-emerald-700 text-emerald-800 bg-white font-bold'
@@ -296,6 +353,27 @@ export const StandardImportModal: React.FC<StandardImportModalProps> = ({
                 <label className="font-bold text-slate-700">
                   外部AI（Google AI Studio等）で出力された論述問題Markdownを貼り付け
                 </label>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded hover:bg-emerald-100"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    Markdownファイルを一括読み込み（複数選択可）
+                  </button>
+                  <span className="text-[11px] text-slate-400">
+                    .md / .txt をまとめて選択可。「問題1」「問題2」…の区切りで複数問題にも対応
+                  </span>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".md,.txt,text/markdown,text/plain"
+                    multiple
+                    className="hidden"
+                    onChange={handleFilesSelected}
+                  />
+                </div>
                 <textarea
                   value={rawMarkdown}
                   onChange={(e) => setRawMarkdown(e.target.value)}
@@ -334,59 +412,105 @@ export const StandardImportModal: React.FC<StandardImportModalProps> = ({
             </div>
           )}
 
-          {activeTab === 'preview' && parsedProblem && (
+          {activeTab === 'preview' && parsedProblems.length > 0 && (
             <div className="space-y-4 text-xs">
-              <div className="p-4 bg-slate-50 rounded border border-slate-200 space-y-2">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="font-bold text-slate-700 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded text-[11px]">
-                    {parsedProblem.field}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
+                <div>
+                  <h4 className="text-sm font-bold text-slate-800">
+                    解析完了: 全 {parsedProblems.length} 問
+                  </h4>
+                  <p className="text-slate-500">登録する問題を選択してください。タイトルを押すと内容を確認できます。</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setSelectedProblemIds(new Set(parsedProblems.map((p) => p.id)))}
+                    className="px-2.5 py-1 text-emerald-700 hover:bg-emerald-50 rounded"
+                  >
+                    すべて選択
+                  </button>
+                  <button
+                    onClick={() => setSelectedProblemIds(new Set())}
+                    className="px-2.5 py-1 text-slate-500 hover:bg-slate-100 rounded"
+                  >
+                    選択解除
+                  </button>
+                  <span className="font-bold text-slate-700 ml-2">
+                    {selectedProblemIds.size} / {parsedProblems.length} 問 選択中
                   </span>
-                  {(parsedProblem.tags || ['作AI']).map((t) => (
-                    <span
-                      key={t}
-                      className="font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded text-[11px]"
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {parsedProblems.map((problem, idx) => {
+                  const isSelected = selectedProblemIds.has(problem.id);
+                  const isExpanded = expandedProblemId === problem.id;
+                  return (
+                    <div
+                      key={problem.id}
+                      className={`border rounded ${isSelected ? 'border-emerald-300 bg-emerald-50/30' : 'border-slate-200 bg-white'}`}
                     >
-                      {t}
-                    </span>
-                  ))}
-                  {parsedProblem.charLimit && (
-                    <span className="text-purple-700 font-bold font-mono text-[11px] bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
-                      指定: {parsedProblem.charLimit}字以内
-                    </span>
-                  )}
-                </div>
-                <h4 className="text-sm font-bold text-slate-900">{parsedProblem.title}</h4>
-                {parsedProblem.theme && (
-                  <div className="text-xs text-slate-500">テーマ: {parsedProblem.theme}</div>
-                )}
+                      <div className="flex items-start gap-2 p-3">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleToggleProblemSelection(problem.id)}
+                          className="mt-0.5"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setExpandedProblemId(isExpanded ? null : problem.id)}
+                          className="flex-1 text-left"
+                        >
+                          <div className="font-bold text-slate-800">
+                            {idx + 1}. {problem.title}
+                          </div>
+                          <div className="text-slate-500 mt-0.5">
+                            {problem.field}
+                            {problem.theme ? ` / ${problem.theme}` : ''}
+                            {problem.charLimit ? ` / ${problem.charLimit}字以内` : ''}
+                          </div>
+                        </button>
+                      </div>
+                      {isExpanded && (
+                        <div className="px-3 pb-3 space-y-2">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {(problem.tags || ['作AI']).map((t) => (
+                              <span
+                                key={t}
+                                className="font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded text-[11px]"
+                              >
+                                {t}
+                              </span>
+                            ))}
+                          </div>
+                          <div className="p-3 bg-white rounded border border-slate-200 space-y-1">
+                            <span className="font-bold text-slate-700">【問題文】</span>
+                            <div className="text-slate-800 whitespace-pre-wrap leading-relaxed">
+                              {problem.contentBlocks.map((b) => b.content).join('\n')}
+                            </div>
+                          </div>
+                          <div className="p-3 bg-emerald-50/70 rounded border border-emerald-200 space-y-1">
+                            <span className="font-bold text-emerald-950">【模範解答】</span>
+                            <div className="text-emerald-900 whitespace-pre-wrap leading-relaxed font-sans">
+                              {problem.modelAnswer}
+                            </div>
+                          </div>
+                          {problem.gradingRubric && problem.gradingRubric.length > 0 && (
+                            <div className="p-3 bg-amber-50/70 rounded border border-amber-200 text-amber-950">
+                              <span className="font-bold text-amber-900">【採点基準】</span>
+                              <ul className="list-disc list-inside mt-1 space-y-0.5">
+                                {problem.gradingRubric.map((r, i) => (
+                                  <li key={i}>{r}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-
-              {/* Problem Content Preview */}
-              <div className="p-3 bg-white rounded border border-slate-200 space-y-1">
-                <span className="font-bold text-slate-700">【問題文】</span>
-                <div className="text-slate-800 whitespace-pre-wrap leading-relaxed">
-                  {parsedProblem.contentBlocks.map((b) => b.content).join('\n')}
-                </div>
-              </div>
-
-              {/* Model Answer Preview */}
-              <div className="p-3 bg-emerald-50/70 rounded border border-emerald-200 space-y-1">
-                <span className="font-bold text-emerald-950">【模範解答】</span>
-                <div className="text-emerald-900 whitespace-pre-wrap leading-relaxed font-sans">
-                  {parsedProblem.modelAnswer}
-                </div>
-              </div>
-
-              {parsedProblem.gradingRubric && parsedProblem.gradingRubric.length > 0 && (
-                <div className="p-3 bg-amber-50/70 rounded border border-amber-200 text-amber-950">
-                  <span className="font-bold text-amber-900">【採点基準】</span>
-                  <ul className="list-disc list-inside mt-1 space-y-0.5">
-                    {parsedProblem.gradingRubric.map((r, i) => (
-                      <li key={i}>{r}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
             </div>
           )}
         </div>
@@ -436,7 +560,7 @@ export const StandardImportModal: React.FC<StandardImportModalProps> = ({
                   戻る
                 </button>
                 <button
-                  onClick={handleParse}
+                  onClick={() => handleParse()}
                   disabled={!rawMarkdown.trim()}
                   className="flex items-center gap-1 px-4 py-2 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white rounded font-bold"
                 >
@@ -456,11 +580,11 @@ export const StandardImportModal: React.FC<StandardImportModalProps> = ({
                 </button>
                 <button
                   onClick={handleCommit}
-                  disabled={isSubmitting}
-                  className="flex items-center gap-1 px-5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded font-bold shadow-xs"
+                  disabled={isSubmitting || selectedProblemIds.size === 0}
+                  className="flex items-center gap-1 px-5 py-2 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white rounded font-bold shadow-xs"
                 >
                   <CheckCircle className="w-4 h-4" />
-                  {isSubmitting ? '登録中...' : '問題を登録する'}
+                  {isSubmitting ? '登録中...' : `選択した問題を登録する（${selectedProblemIds.size}問）`}
                 </button>
               </>
             )}
