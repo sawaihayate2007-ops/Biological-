@@ -55,18 +55,18 @@ export const Navbar: React.FC<NavbarProps> = ({
   return (
     <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-2xs">
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
-        <div className="flex items-center justify-between h-14">
+        <div className="flex items-center justify-between h-14 gap-2">
           {/* Logo & App Title */}
           <div
             onClick={() => onSelectTab('home')}
-            className="flex items-center gap-2.5 cursor-pointer select-none group shrink-0"
+            className="flex items-center gap-2.5 cursor-pointer select-none group min-w-0"
           >
-            <div className="w-8 h-8 rounded bg-emerald-700 flex items-center justify-center text-white shadow-2xs transition-transform group-hover:scale-105">
+            <div className="w-8 h-8 rounded bg-emerald-700 flex items-center justify-center text-white shadow-2xs transition-transform group-hover:scale-105 shrink-0">
               <GraduationCap className="w-5 h-5" />
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="text-sm font-extrabold text-slate-900 tracking-tight flex items-center gap-1.5">
-                <span>大学受験生物 論述学習システム</span>
+                <span className="truncate">大学受験生物 論述学習システム</span>
               </div>
               <div className="text-[10px] text-slate-500 font-medium hidden sm:block">
                 難関大学 二次記述・論述総合対策
@@ -103,7 +103,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           </nav>
 
           {/* Right Header Actions: Target Difficulty Selector & Google AI Studio */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             {/* Common Target Difficulty Selector */}
             <div
               className="flex items-center gap-1.5 bg-emerald-50/70 hover:bg-emerald-100/60 border border-emerald-200/80 rounded-md px-2.5 py-1 transition-colors"
@@ -151,12 +151,12 @@ export const Navbar: React.FC<NavbarProps> = ({
               <button
                 key={tab.id}
                 onClick={() => onSelectTab(tab.id)}
-                className={`flex-1 min-w-[70px] flex flex-col items-center py-1 px-1 rounded transition-colors relative ${
+                className={`flex-1 min-w-[60px] flex flex-col items-center py-1 px-1 rounded transition-colors relative ${
                   isActive ? 'text-emerald-700 font-bold bg-emerald-50/50' : 'text-slate-500'
                 }`}
               >
                 <Icon className="w-4 h-4 mb-0.5" />
-                <span className="truncate max-w-[75px]">{tab.label.replace('部門', '')}</span>
+                <span className="truncate max-w-[64px]">{tab.label.replace('部門', '')}</span>
                 {tab.badge !== undefined && (
                   <span className="absolute top-0 right-1 w-2 h-2 bg-red-500 rounded-full" />
                 )}

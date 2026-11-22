@@ -1,1 +1,8 @@
 @import "tailwindcss";
+
+/* 横にはみ出した要素があっても画面全体が横にずれないようにする
+   （clip は sticky ヘッダーを壊さない） */
+html,
+body {
+  overflow-x: clip;
+}
