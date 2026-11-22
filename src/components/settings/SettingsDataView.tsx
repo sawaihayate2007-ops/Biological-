@@ -267,11 +267,41 @@ export const SettingsDataView: React.FC<SettingsDataViewProps> = ({
       setSyncError('Gist IDを入力してください。');
       return;
     }
-    const next = { ...syncConfig, gistId, lastSyncedAt: null, lastRemoteUpdatedAt: null };
-    persistSyncConfig(next);
-    setGistIdInput('');
-    setSyncMessage('Gistに接続しました。「ダウンロード」でこの端末にデータを取り込めます。');
-    await checkRemote(next);
+    setSyncBusy(true);
+    setSyncError(null);
+    try {
+      // IDを保存する前に、実在するBiological-の同期Gistかを確認する
+      // （間違ったIDを保存してしまうと接続し直せなくなるため）
+      const res = await fetchSyncPayload(syncConfig.token, gistId);
+      const next = {
+        ...syncConfig,
+        gistId,
+        lastSyncedAt: null,
+        lastRemoteUpdatedAt: res.updatedAt,
+      };
+      persistSyncConfig(next);
+      setGistIdInput('');
+      setRemoteState('same');
+      setSyncMessage('Gistに接続しました。「ダウンロード」でこの端末にデータを取り込めます。');
+    } catch (e: any) {
+      setSyncError(
+        (e.message || 'Gistに接続できませんでした。') + ' IDは保存されていません。'
+      );
+    } finally {
+      setSyncBusy(false);
+    }
+  };
+
+  const handleDisconnectGist = () => {
+    persistSyncConfig({
+      ...syncConfig,
+      gistId: null,
+      lastSyncedAt: null,
+      lastRemoteUpdatedAt: null,
+    });
+    setRemoteState('unknown');
+    setSyncError(null);
+    setSyncMessage('Gistの接続を解除しました。正しいGist IDで接続し直せます（トークンは残っています）。');
   };
 
   const doPush = async () => {
@@ -623,6 +653,16 @@ export const SettingsDataView: React.FC<SettingsDataViewProps> = ({
             </div>
             <p className="text-[11px] text-slate-500">
               ダウンロードはこの端末のデータを全て置き換えます（実行前に確認画面が出ます）。アップロードもGist側を全て置き換えます。
+            </p>
+            <p className="text-[11px] text-slate-500">
+              接続先のGist IDを間違えた場合は、接続を解除して入れ直せます（データ自体は消えません）。
+              <button
+                onClick={handleDisconnectGist}
+                disabled={syncBusy}
+                className="ml-2 text-red-600 font-bold hover:underline disabled:opacity-50"
+              >
+                Gistの接続を解除する
+              </button>
             </p>
           </div>
         )}
