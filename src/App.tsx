@@ -15,6 +15,7 @@ import {
   TargetDifficulty,
 } from './types';
 import { dbService } from './services/db';
+import { loadSyncConfig, getRemoteUpdatedAt } from './services/gistSync';
 import { Navbar, NavTab } from './components/Navbar';
 import { HomeDashboard } from './components/HomeDashboard';
 import { KnowledgeListView } from './components/knowledge/KnowledgeListView';
@@ -28,6 +29,7 @@ import { SettingsDataView } from './components/settings/SettingsDataView';
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState<NavTab>('home');
+  const [showSyncBanner, setShowSyncBanner] = useState(false);
   const [cards, setCards] = useState<KnowledgeCard[]>([]);
   const [problems, setProblems] = useState<StandardProblem[]>([]);
   const [submissions, setSubmissions] = useState<ProblemSubmission[]>([]);
@@ -65,6 +67,20 @@ export default function App() {
       console.error('Failed to load data from IndexedDB:', err);
     } finally {
       setIsLoading(false);
+    }
+  }, []);
+
+  // 起動時：Gist側が最後の同期より新しくなっていたら知らせる
+  useEffect(() => {
+    const cfg = loadSyncConfig();
+    if (cfg.token && cfg.gistId && cfg.lastRemoteUpdatedAt) {
+      getRemoteUpdatedAt(cfg.token, cfg.gistId)
+        .then((updatedAt) => {
+          if (updatedAt !== cfg.lastRemoteUpdatedAt) setShowSyncBanner(true);
+        })
+        .catch(() => {
+          /* 通信できないときは何もしない */
+        });
     }
   }, []);
 
@@ -212,6 +228,29 @@ export default function App() {
         targetDifficulty={settings.targetDifficulty}
         onChangeDifficulty={handleUpdateDifficulty}
       />
+
+      {/* Gist Sync Banner */}
+      {showSyncBanner && currentTab !== 'settings' && (
+        <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 flex items-center justify-center gap-3 text-xs text-amber-900">
+          <span className="font-bold">Gist側に新しいデータがあります（他の端末で同期された可能性）</span>
+          <button
+            onClick={() => {
+              setCurrentTab('settings');
+              setShowSyncBanner(false);
+            }}
+            className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded font-bold"
+          >
+            設定で確認
+          </button>
+          <button
+            onClick={() => setShowSyncBanner(false)}
+            className="text-amber-700 font-bold px-1"
+            aria-label="閉じる"
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 md:p-8">

@@ -3,9 +3,21 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { AppSettings, DBExportData, TargetDifficulty, TARGET_DIFFICULTIES } from '../../types';
 import { dbService } from '../../services/db';
+import {
+  GistSyncConfig,
+  SyncPayload,
+  loadSyncConfig,
+  saveSyncConfig,
+  buildPayload,
+  testToken,
+  createSyncGist,
+  updateSyncGist,
+  getRemoteUpdatedAt,
+  fetchSyncPayload,
+} from '../../services/gistSync';
 import { TARGET_DIFFICULTY_PROFILES } from '../../services/promptGenerators';
 import { ConfirmModal } from '../common/ConfirmModal';
 import {
@@ -23,6 +35,7 @@ import {
   GraduationCap,
   Sparkles,
   Info,
+  RefreshCw,
 } from 'lucide-react';
 
 interface SettingsDataViewProps {
@@ -154,6 +167,195 @@ export const SettingsDataView: React.FC<SettingsDataViewProps> = ({
     }
   };
 
+  // ===== GitHub Gist 同期 =====
+  const [syncConfig, setSyncConfig] = useState<GistSyncConfig>(() => loadSyncConfig());
+  const [tokenInput, setTokenInput] = useState('');
+  const [gistIdInput, setGistIdInput] = useState('');
+  const [syncBusy, setSyncBusy] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [remoteState, setRemoteState] = useState<'unknown' | 'same' | 'newer'>('unknown');
+  const [pendingPull, setPendingPull] = useState<{ payload: SyncPayload; updatedAt: string } | null>(null);
+  const [isPullConfirmOpen, setIsPullConfirmOpen] = useState(false);
+  const [isPushConfirmOpen, setIsPushConfirmOpen] = useState(false);
+
+  const persistSyncConfig = (next: GistSyncConfig) => {
+    setSyncConfig(next);
+    saveSyncConfig(next);
+  };
+
+  const checkRemote = async (cfg: GistSyncConfig) => {
+    if (!cfg.token || !cfg.gistId) return;
+    try {
+      const updatedAt = await getRemoteUpdatedAt(cfg.token, cfg.gistId);
+      setRemoteState(updatedAt === cfg.lastRemoteUpdatedAt ? 'same' : 'newer');
+    } catch {
+      setRemoteState('unknown');
+    }
+  };
+
+  useEffect(() => {
+    const cfg = loadSyncConfig();
+    if (cfg.token && cfg.gistId) {
+      void checkRemote(cfg);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleSaveToken = () => {
+    const token = tokenInput.trim();
+    if (!token) return;
+    persistSyncConfig({ ...syncConfig, token });
+    setTokenInput('');
+    setSyncError(null);
+    setSyncMessage('トークンをこの端末に保存しました。');
+  };
+
+  const handleTestToken = async () => {
+    const token = tokenInput.trim() || syncConfig.token;
+    if (!token) {
+      setSyncError('トークンを入力してください。');
+      return;
+    }
+    setSyncBusy(true);
+    setSyncError(null);
+    try {
+      const login = await testToken(token);
+      setSyncMessage(`接続OK：GitHubアカウント「${login}」で認証できました。`);
+    } catch (e: any) {
+      setSyncError(e.message || '接続テストに失敗しました。');
+    } finally {
+      setSyncBusy(false);
+    }
+  };
+
+  const handleCreateGist = async () => {
+    if (!syncConfig.token) {
+      setSyncError('先にトークンを保存してください。');
+      return;
+    }
+    setSyncBusy(true);
+    setSyncError(null);
+    try {
+      const data = await dbService.exportAllData();
+      const payload = buildPayload(data);
+      const res = await createSyncGist(syncConfig.token, payload);
+      persistSyncConfig({
+        ...syncConfig,
+        gistId: res.gistId,
+        lastSyncedAt: payload.syncedAt,
+        lastRemoteUpdatedAt: res.updatedAt,
+      });
+      setRemoteState('same');
+      setSyncMessage(
+        `同期用Gistを作成しました。Gist ID: ${res.gistId}（他の端末ではこのIDで接続します）`
+      );
+    } catch (e: any) {
+      setSyncError(e.message || 'Gistの作成に失敗しました。');
+    } finally {
+      setSyncBusy(false);
+    }
+  };
+
+  const handleConnectGist = async () => {
+    const gistId = gistIdInput.trim();
+    if (!syncConfig.token) {
+      setSyncError('先にトークンを保存してください。');
+      return;
+    }
+    if (!gistId) {
+      setSyncError('Gist IDを入力してください。');
+      return;
+    }
+    const next = { ...syncConfig, gistId, lastSyncedAt: null, lastRemoteUpdatedAt: null };
+    persistSyncConfig(next);
+    setGistIdInput('');
+    setSyncMessage('Gistに接続しました。「ダウンロード」でこの端末にデータを取り込めます。');
+    await checkRemote(next);
+  };
+
+  const doPush = async () => {
+    if (!syncConfig.token || !syncConfig.gistId) return;
+    setSyncBusy(true);
+    setSyncError(null);
+    try {
+      const data = await dbService.exportAllData();
+      const payload = buildPayload(data);
+      const res = await updateSyncGist(syncConfig.token, syncConfig.gistId, payload);
+      persistSyncConfig({
+        ...syncConfig,
+        lastSyncedAt: payload.syncedAt,
+        lastRemoteUpdatedAt: res.updatedAt,
+      });
+      setRemoteState('same');
+      setSyncMessage(
+        `アップロード完了：カード ${data.knowledgeCards.length}枚・問題 ${data.standardProblems.length}問・履歴 ${data.submissions.length}件を同期しました。`
+      );
+    } catch (e: any) {
+      setSyncError(e.message || 'アップロードに失敗しました。');
+    } finally {
+      setSyncBusy(false);
+    }
+  };
+
+  const handlePushRequest = async () => {
+    if (!syncConfig.token || !syncConfig.gistId) return;
+    setSyncBusy(true);
+    try {
+      const updatedAt = await getRemoteUpdatedAt(syncConfig.token, syncConfig.gistId);
+      const isNewer = updatedAt !== syncConfig.lastRemoteUpdatedAt;
+      setRemoteState(isNewer ? 'newer' : 'same');
+      setSyncBusy(false);
+      if (isNewer) {
+        setIsPushConfirmOpen(true);
+      } else {
+        await doPush();
+      }
+    } catch (e: any) {
+      setSyncBusy(false);
+      setSyncError(e.message || 'Gistの確認に失敗しました。');
+    }
+  };
+
+  const handlePullRequest = async () => {
+    if (!syncConfig.token || !syncConfig.gistId) return;
+    setSyncBusy(true);
+    setSyncError(null);
+    try {
+      const res = await fetchSyncPayload(syncConfig.token, syncConfig.gistId);
+      setPendingPull(res);
+      setIsPullConfirmOpen(true);
+    } catch (e: any) {
+      setSyncError(e.message || 'ダウンロードに失敗しました。');
+    } finally {
+      setSyncBusy(false);
+    }
+  };
+
+  const handleConfirmPull = async () => {
+    if (!pendingPull || !syncConfig.gistId) return;
+    setSyncBusy(true);
+    try {
+      const res = await dbService.importAllData(pendingPull.payload.data);
+      persistSyncConfig({
+        ...syncConfig,
+        lastSyncedAt: pendingPull.payload.syncedAt,
+        lastRemoteUpdatedAt: pendingPull.updatedAt,
+      });
+      setRemoteState('same');
+      setIsPullConfirmOpen(false);
+      setPendingPull(null);
+      await onDataResetOrRestored();
+      setSyncMessage(
+        `ダウンロード完了：カード ${res.cardsCount}枚・問題 ${res.problemsCount}問を取り込みました。`
+      );
+    } catch (e: any) {
+      setSyncError(e.message || '取り込みに失敗しました。');
+    } finally {
+      setSyncBusy(false);
+    }
+  };
+
   // Reset to Sample Preset
   const handleConfirmReset = async () => {
     try {
@@ -277,6 +479,153 @@ export const SettingsDataView: React.FC<SettingsDataViewProps> = ({
             Markdown形式でダウンロード
           </button>
         </div>
+      </div>
+
+      {/* GitHub Gist Sync */}
+      <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-2xs space-y-4">
+        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 border-b border-slate-100 pb-2">
+          <RefreshCw className="w-4 h-4 text-emerald-600" />
+          端末間同期（GitHub Gist）
+        </h3>
+        <p className="text-[11px] text-slate-500">
+          秘密のGistに全データを置いて、iPad・iPhone・PCの間で同期します。トークンはこの端末のブラウザ内にのみ保存され、同期データには含まれません。
+        </p>
+
+        {syncMessage && (
+          <div className="p-3 bg-emerald-50 border border-emerald-200 rounded text-xs text-emerald-800 font-bold">
+            {syncMessage}
+          </div>
+        )}
+        {syncError && (
+          <div className="p-3 bg-red-50 border border-red-200 rounded text-xs text-red-800 font-bold flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
+            {syncError}
+          </div>
+        )}
+        {remoteState === 'newer' && syncConfig.gistId && (
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800 font-bold">
+            Gist側に、この端末で最後に同期したときより新しいデータがあります。「ダウンロード」で取り込むか、内容を確認してから操作してください。
+          </div>
+        )}
+
+        {/* Token */}
+        <div className="space-y-2 text-xs">
+          <div className="font-bold text-slate-800">1. GitHubトークン（gist権限）</div>
+          {syncConfig.token ? (
+            <p className="text-slate-600">
+              保存済みです（この端末のみ）。
+              <button
+                onClick={() => persistSyncConfig({ token: '', gistId: null, lastSyncedAt: null, lastRemoteUpdatedAt: null })}
+                className="ml-2 text-red-600 font-bold hover:underline"
+              >
+                削除する
+              </button>
+            </p>
+          ) : (
+            <>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="password"
+                  value={tokenInput}
+                  onChange={(e) => setTokenInput(e.target.value)}
+                  placeholder="ghp_ で始まるトークン"
+                  className="flex-1 border border-slate-300 rounded px-3 py-2 text-xs"
+                />
+                <button
+                  onClick={handleSaveToken}
+                  disabled={!tokenInput.trim() || syncBusy}
+                  className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white rounded font-bold"
+                >
+                  保存
+                </button>
+                <button
+                  onClick={handleTestToken}
+                  disabled={syncBusy}
+                  className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 disabled:opacity-50 text-slate-700 rounded font-bold"
+                >
+                  接続テスト
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-500">
+                トークンは{' '}
+                <a
+                  href="https://github.com/settings/tokens/new?scopes=gist&description=Biological-sync"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-emerald-700 font-bold hover:underline"
+                >
+                  GitHubのトークン作成ページ
+                </a>
+                で「gist」にチェックを入れて発行してください（classicトークン）。
+              </p>
+            </>
+          )}
+        </div>
+
+        {/* Gist setup */}
+        {syncConfig.token && !syncConfig.gistId && (
+          <div className="space-y-2 text-xs border-t border-slate-100 pt-3">
+            <div className="font-bold text-slate-800">2. 同期用Gistの用意</div>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <button
+                onClick={handleCreateGist}
+                disabled={syncBusy}
+                className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white rounded font-bold"
+              >
+                新しいGistを作成して今のデータを置く
+              </button>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="text"
+                value={gistIdInput}
+                onChange={(e) => setGistIdInput(e.target.value)}
+                placeholder="既存のGist ID（他の端末で作成済みの場合）"
+                className="flex-1 border border-slate-300 rounded px-3 py-2 text-xs"
+              />
+              <button
+                onClick={handleConnectGist}
+                disabled={syncBusy || !gistIdInput.trim()}
+                className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 disabled:opacity-50 text-slate-700 rounded font-bold"
+              >
+                このGistに接続
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Push / Pull */}
+        {syncConfig.token && syncConfig.gistId && (
+          <div className="space-y-2 text-xs border-t border-slate-100 pt-3">
+            <div className="font-bold text-slate-800">2. 同期の実行</div>
+            <p className="text-[11px] text-slate-500 break-all">
+              Gist ID: {syncConfig.gistId}
+              {syncConfig.lastSyncedAt &&
+                ` ／ 最終同期: ${new Date(syncConfig.lastSyncedAt).toLocaleString('ja-JP')}`}
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button
+                onClick={handlePushRequest}
+                disabled={syncBusy}
+                className="flex items-center justify-center gap-1.5 py-2 px-3 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white rounded font-bold"
+              >
+                <Upload className="w-4 h-4" />
+                アップロード（この端末 → Gist）
+              </button>
+              <button
+                onClick={handlePullRequest}
+                disabled={syncBusy}
+                className="flex items-center justify-center gap-1.5 py-2 px-3 bg-white border border-slate-300 hover:bg-slate-50 disabled:opacity-50 text-slate-700 rounded font-bold"
+              >
+                <Download className="w-4 h-4 text-slate-500" />
+                ダウンロード（Gist → この端末）
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-500">
+              ダウンロードはこの端末のデータを全て置き換えます（実行前に確認画面が出ます）。アップロードもGist側を全て置き換えます。
+            </p>
+          </div>
+        )}
       </div>
 
       {/* External AI Settings */}
@@ -453,6 +802,34 @@ export const SettingsDataView: React.FC<SettingsDataViewProps> = ({
           setIsRestoreConfirmOpen(false);
           setPendingRestoreData(null);
         }}
+      />
+
+      {/* Confirm Pull Modal */}
+      <ConfirmModal
+        isOpen={isPullConfirmOpen}
+        title="Gistからダウンロード"
+        message={`Gist側のデータでこの端末のデータを置き換えますか？\n（同期日時: ${pendingPull ? new Date(pendingPull.payload.syncedAt).toLocaleString('ja-JP') : ''}／カード: ${pendingPull?.payload.data.knowledgeCards.length || 0}枚、問題: ${pendingPull?.payload.data.standardProblems.length || 0}問、履歴: ${pendingPull?.payload.data.submissions.length || 0}件）`}
+        confirmLabel="ダウンロードして置き換える"
+        isDestructive={true}
+        onConfirm={handleConfirmPull}
+        onCancel={() => {
+          setIsPullConfirmOpen(false);
+          setPendingPull(null);
+        }}
+      />
+
+      {/* Confirm Push Overwrite Modal */}
+      <ConfirmModal
+        isOpen={isPushConfirmOpen}
+        title="Gist側の方が新しいデータです"
+        message="最後に同期してから、Gist側のデータが他の端末で更新されています。このままアップロードすると、Gist側の新しいデータがこの端末のデータで上書きされます。続けますか？"
+        confirmLabel="上書きしてアップロード"
+        isDestructive={true}
+        onConfirm={() => {
+          setIsPushConfirmOpen(false);
+          void doPush();
+        }}
+        onCancel={() => setIsPushConfirmOpen(false)}
       />
 
       {/* Confirm Reset Modal */}
