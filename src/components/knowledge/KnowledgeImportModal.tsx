@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   KnowledgeCard,
   BiologyField,
@@ -71,6 +71,7 @@ export const KnowledgeImportModal: React.FC<KnowledgeImportModalProps> = ({
   const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(new Set());
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
 
@@ -99,11 +100,11 @@ export const KnowledgeImportModal: React.FC<KnowledgeImportModalProps> = ({
     window.open(aiStudioUrl || 'https://aistudio.google.com/u/2/prompts/new_chat', '_blank', 'noopener,noreferrer');
   };
 
-  const handleParseMarkdown = () => {
+  const handleParseMarkdown = (text?: string) => {
     setParseErrors([]);
     setParseWarnings([]);
 
-    const res = parseKnowledgeMarkdown(rawMarkdown);
+    const res = parseKnowledgeMarkdown(text ?? rawMarkdown);
 
     if (!res.success) {
       setParseErrors(res.errors);
@@ -115,6 +116,21 @@ export const KnowledgeImportModal: React.FC<KnowledgeImportModalProps> = ({
     setParsedCards(res.data);
     setSelectedCardIds(new Set(res.data.map((c) => c.id)));
     setActiveTab('preview');
+  };
+
+  // 複数Markdownファイルの一括読み込み（分野・テーマが混在していてもカードごとに保持される）
+  const handleFilesSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (files.length === 0) return;
+    try {
+      const texts = await Promise.all(files.map((f) => f.text()));
+      const combined = texts.join('\n\n');
+      setRawMarkdown(combined);
+      handleParseMarkdown(combined);
+    } catch {
+      setParseErrors(['ファイルの読み込みに失敗しました。テキスト形式のMarkdownファイルを選択してください。']);
+    }
   };
 
   const handleToggleCardSelection = (id: string) => {
@@ -339,8 +355,27 @@ export const KnowledgeImportModal: React.FC<KnowledgeImportModalProps> = ({
                   外部AI（Google AI Studio等）で出力されたMarkdownを貼り付け
                 </label>
                 <span className="text-xs text-slate-400">
-                  ※見出し階層（分野、第○章、テーマ○○、カードX）に対応
+                  ※見出し階層（分野、第○章、テーマ○○、カードX）に対応。複数分野の一括取り込み可
                 </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded hover:bg-emerald-100"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  Markdownファイルを一括読み込み（複数選択可）
+                </button>
+                <span className="text-[11px] text-slate-400">.md / .txt ファイルをまとめて選択できます</span>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".md,.txt,text/markdown,text/plain"
+                  multiple
+                  className="hidden"
+                  onChange={handleFilesSelected}
+                />
               </div>
               <textarea
                 value={rawMarkdown}
@@ -596,7 +631,7 @@ export const KnowledgeImportModal: React.FC<KnowledgeImportModalProps> = ({
                   プロンプト画面に戻る
                 </button>
                 <button
-                  onClick={handleParseMarkdown}
+                  onClick={() => handleParseMarkdown()}
                   disabled={!rawMarkdown.trim()}
                   className="flex items-center gap-1.5 px-4 py-2 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white rounded text-xs font-bold transition-colors shadow-xs"
                 >

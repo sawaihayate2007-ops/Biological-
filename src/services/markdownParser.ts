@@ -61,6 +61,10 @@ export function parseKnowledgeMarkdown(rawText: string): ParseResult<KnowledgeCa
     headerLines: string[];
     sectionLines: Record<string, string[]>;
     startLine: number;
+    field: BiologyField;
+    chapter: string;
+    theme: string;
+    themeId: string;
   }
 
   const rawChunks: RawCardChunk[] = [];
@@ -112,6 +116,10 @@ export function parseKnowledgeMarkdown(rawText: string): ParseResult<KnowledgeCa
         headerLines: [line],
         sectionLines: {},
         startLine: i + 1,
+        field: currentField,
+        chapter: currentChapter,
+        theme: currentTheme,
+        themeId: currentThemeId,
       };
       currentSection = 'header';
       continue;
@@ -257,7 +265,7 @@ export function parseKnowledgeMarkdown(rawText: string): ParseResult<KnowledgeCa
 
     const card: KnowledgeCard = {
       id: `kc-import-${Date.now()}-${index}-${Math.random().toString(36).substring(2, 6)}`,
-      themeId: currentThemeId,
+      themeId: chunk.themeId,
       type,
       title: title || `論述カード ${index + 1}`,
       question: question || '（問題文未設定）',
@@ -267,11 +275,11 @@ export function parseKnowledgeMarkdown(rawText: string): ParseResult<KnowledgeCa
       keyTerms,
       rubric,
       explanation: explanation || undefined,
-      field: currentField,
-      chapter: currentChapter,
-      theme: currentTheme,
+      field: chunk.field,
+      chapter: chunk.chapter,
+      theme: chunk.theme,
       difficulty,
-      tags: [currentField, type],
+      tags: [chunk.field, type],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       mastery: 'unlearned',
