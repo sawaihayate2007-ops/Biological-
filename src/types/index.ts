@@ -97,6 +97,7 @@ export interface CardReviewLog {
   rating: ReviewRating;
   userAnswer?: string;
   selfScore?: number; // 総合論述時の自己評価 (0-100)
+  missedTerms?: string[]; // 解答を見る前に言えなかった必須キーワード
 }
 
 // 通常の論述問題・コンテンツブロック

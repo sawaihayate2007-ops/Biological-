@@ -187,7 +187,8 @@ class DatabaseService {
     cardId: string,
     rating: ReviewRating,
     userAnswer?: string,
-    selfScore?: number
+    selfScore?: number,
+    missedTerms?: string[]
   ): Promise<KnowledgeCard> {
     const card = await this.getCardById(cardId);
     if (!card) throw new Error(`Card not found: ${cardId}`);
@@ -226,6 +227,7 @@ class DatabaseService {
       rating,
       userAnswer,
       selfScore,
+      missedTerms: missedTerms && missedTerms.length > 0 ? missedTerms : undefined,
     };
 
     const updatedCard: KnowledgeCard = {

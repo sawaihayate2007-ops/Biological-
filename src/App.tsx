@@ -104,8 +104,8 @@ export default function App() {
   }, [cards, todayStr]);
 
   // ---- CARD HANDLERS ----
-  const handleRecordReview = async (cardId: string, rating: ReviewRating) => {
-    const updated = await dbService.recordCardReview(cardId, rating);
+  const handleRecordReview = async (cardId: string, rating: ReviewRating, missedTerms?: string[]) => {
+    const updated = await dbService.recordCardReview(cardId, rating, undefined, undefined, missedTerms);
     setCards((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
   };
 
@@ -268,7 +268,16 @@ export default function App() {
             }}
             onStartDueReview={() => {
               const due = cards.filter((c) => c.nextReviewDate <= todayStr);
-              setStudySessionCards(due.length > 0 ? due : cards);
+              const pool = due.length > 0 ? due : cards;
+              // 忘れた回数が多いもの・期限が古いものを先に。
+              // 1セッションは「1日の目標カード数」までに絞る（残りは次回に回る）。
+              const sorted = [...pool].sort((a, b) => {
+                const lapseDiff = (b.lapseCount || 0) - (a.lapseCount || 0);
+                if (lapseDiff !== 0) return lapseDiff;
+                return a.nextReviewDate.localeCompare(b.nextReviewDate);
+              });
+              const cap = settings.dailyGoalCards || 15;
+              setStudySessionCards(sorted.slice(0, cap));
               setCurrentTab('knowledge');
             }}
             onSelectProblem={(prob) => {
