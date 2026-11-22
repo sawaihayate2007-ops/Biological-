@@ -16,6 +16,7 @@ import {
   TARGET_DIFFICULTY_PROFILES,
 } from '../../services/promptGenerators';
 import { parseStandardProblemMarkdown } from '../../services/markdownParser';
+import { dbService } from '../../services/db';
 import {
   X,
   Sparkles,
@@ -57,6 +58,7 @@ export const StandardImportModal: React.FC<StandardImportModalProps> = ({
   // Paste & Parse State
   const [rawMarkdown, setRawMarkdown] = useState('');
   const [parsedProblems, setParsedProblems] = useState<StandardProblem[]>([]);
+  const [duplicateProblemIds, setDuplicateProblemIds] = useState<Set<string>>(new Set());
   const [selectedProblemIds, setSelectedProblemIds] = useState<Set<string>>(new Set());
   const [expandedProblemId, setExpandedProblemId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -93,7 +95,24 @@ export const StandardImportModal: React.FC<StandardImportModalProps> = ({
     window.open(aiStudioUrl || 'https://aistudio.google.com/u/2/prompts/new_chat', '_blank', 'noopener,noreferrer');
   };
 
-  const applyParseResult = (
+  // 重複判定：タイトル＋問題文が既存の問題と一致したら重複として取り込み禁止
+  const problemKey = (p: StandardProblem) =>
+    `${p.title.trim()}\n${p.contentBlocks
+      .map((b) => b.content)
+      .join('\n')
+      .trim()
+      .replace(/\s+/g, ' ')}`;
+
+  const fetchExistingProblemKeys = async (): Promise<Set<string>> => {
+    try {
+      const existing = await dbService.getAllProblems();
+      return new Set(existing.map(problemKey));
+    } catch {
+      return new Set();
+    }
+  };
+
+  const applyParseResult = async (
     problems: StandardProblem[],
     errs: string[],
     warns: string[]
@@ -103,9 +122,16 @@ export const StandardImportModal: React.FC<StandardImportModalProps> = ({
       setWarnings(warns);
       return;
     }
+    const existingKeys = await fetchExistingProblemKeys();
+    const dupIds = new Set(
+      problems.filter((p) => existingKeys.has(problemKey(p))).map((p) => p.id)
+    );
     setWarnings(warns);
     setParsedProblems(problems);
-    setSelectedProblemIds(new Set(problems.map((p) => p.id)));
+    setDuplicateProblemIds(dupIds);
+    setSelectedProblemIds(
+      new Set(problems.filter((p) => !dupIds.has(p.id)).map((p) => p.id))
+    );
     setExpandedProblemId(problems[0].id);
     setActiveTab('preview');
   };
@@ -142,7 +168,7 @@ export const StandardImportModal: React.FC<StandardImportModalProps> = ({
     }
     if (allProblems.length > 0) {
       setRawMarkdown('');
-      applyParseResult(allProblems, [], allWarnings);
+      await applyParseResult(allProblems, [], allWarnings);
     } else {
       setErrors(allErrors);
       setWarnings(allWarnings);
@@ -160,19 +186,53 @@ export const StandardImportModal: React.FC<StandardImportModalProps> = ({
   };
 
   const handleCommit = async () => {
-    const targets = parsedProblems.filter((p) => selectedProblemIds.has(p.id));
-    if (targets.length === 0) return;
+    const selected = parsedProblems.filter((p) => selectedProblemIds.has(p.id));
+    if (selected.length === 0) return;
+
+    // 重複（既存の問題と一致／取り込み対象どうしの一致）は登録しない
+    const existingKeys = await fetchExistingProblemKeys();
+    const seen = new Set<string>();
+    const targets: StandardProblem[] = [];
+    let skipped = 0;
+    for (const p of selected) {
+      const k = problemKey(p);
+      if (existingKeys.has(k) || seen.has(k)) {
+        skipped++;
+      } else {
+        seen.add(k);
+        targets.push(p);
+      }
+    }
+    if (targets.length === 0) {
+      setErrors([
+        `選択した${selected.length}問はすべて既存の問題と重複しているため、取り込みできませんでした。`,
+      ]);
+      return;
+    }
 
     setIsSubmitting(true);
     try {
       for (const p of targets) {
         await onImportProblem(p);
       }
-      onClose();
-      setRawMarkdown('');
-      setParsedProblems([]);
-      setSelectedProblemIds(new Set());
-      setActiveTab('prompt');
+      if (skipped > 0) {
+        setRawMarkdown('');
+        setParsedProblems([]);
+        setSelectedProblemIds(new Set());
+        setDuplicateProblemIds(new Set());
+        setActiveTab('paste');
+        setErrors([]);
+        setWarnings([
+          `${targets.length}問を取り込みました。${skipped}問は既存の問題と重複していたためスキップしました。`,
+        ]);
+      } else {
+        onClose();
+        setRawMarkdown('');
+        setParsedProblems([]);
+        setSelectedProblemIds(new Set());
+        setDuplicateProblemIds(new Set());
+        setActiveTab('prompt');
+      }
     } catch (e: any) {
       setErrors([e.message || '保存中にエラーが発生しました。']);
     } finally {
@@ -423,7 +483,15 @@ export const StandardImportModal: React.FC<StandardImportModalProps> = ({
                 </div>
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => setSelectedProblemIds(new Set(parsedProblems.map((p) => p.id)))}
+                    onClick={() =>
+                      setSelectedProblemIds(
+                        new Set(
+                          parsedProblems
+                            .filter((p) => !duplicateProblemIds.has(p.id))
+                            .map((p) => p.id)
+                        )
+                      )
+                    }
                     className="px-2.5 py-1 text-emerald-700 hover:bg-emerald-50 rounded"
                   >
                     すべて選択
@@ -453,8 +521,9 @@ export const StandardImportModal: React.FC<StandardImportModalProps> = ({
                         <input
                           type="checkbox"
                           checked={isSelected}
+                          disabled={duplicateProblemIds.has(problem.id)}
                           onChange={() => handleToggleProblemSelection(problem.id)}
-                          className="mt-0.5"
+                          className="mt-0.5 disabled:opacity-40"
                         />
                         <button
                           type="button"
@@ -463,6 +532,11 @@ export const StandardImportModal: React.FC<StandardImportModalProps> = ({
                         >
                           <div className="font-bold text-slate-800">
                             {idx + 1}. {problem.title}
+                            {duplicateProblemIds.has(problem.id) && (
+                              <span className="ml-2 text-[11px] bg-red-100 text-red-800 font-bold px-2 py-0.5 rounded">
+                                ※既存の問題と重複（取り込み不可）
+                              </span>
+                            )}
                           </div>
                           <div className="text-slate-500 mt-0.5">
                             {problem.field}

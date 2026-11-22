@@ -114,7 +114,7 @@ export const KnowledgeImportModal: React.FC<KnowledgeImportModalProps> = ({
 
     setParseWarnings(res.warnings);
     setParsedCards(res.data);
-    setSelectedCardIds(new Set(res.data.map((c) => c.id)));
+    setSelectedCardIds(new Set(res.data.filter((c) => !isDuplicate(c)).map((c) => c.id)));
     setActiveTab('preview');
   };
 
@@ -145,24 +145,55 @@ export const KnowledgeImportModal: React.FC<KnowledgeImportModalProps> = ({
 
   const handleSelectAll = (select: boolean) => {
     if (select) {
-      setSelectedCardIds(new Set(parsedCards.map((c) => c.id)));
+      setSelectedCardIds(new Set(parsedCards.filter((c) => !isDuplicate(c)).map((c) => c.id)));
     } else {
       setSelectedCardIds(new Set());
     }
   };
 
   const handleCommitImport = async () => {
-    const cardsToCommit = parsedCards.filter((c) => selectedCardIds.has(c.id));
-    if (cardsToCommit.length === 0) return;
+    const selected = parsedCards.filter((c) => selectedCardIds.has(c.id));
+    if (selected.length === 0) return;
+
+    // 重複（既存カードと一致／取り込み対象どうしの一致）は登録しない
+    const seen = new Set<string>();
+    const cardsToCommit: KnowledgeCard[] = [];
+    let skipped = 0;
+    for (const c of selected) {
+      const k = cardKey(c);
+      if (existingCardKeys.has(k) || seen.has(k)) {
+        skipped++;
+      } else {
+        seen.add(k);
+        cardsToCommit.push(c);
+      }
+    }
+    if (cardsToCommit.length === 0) {
+      setParseErrors([
+        `選択した${selected.length}枚はすべて既存カードと重複しているため、取り込みできませんでした。`,
+      ]);
+      return;
+    }
 
     setIsImporting(true);
     try {
       await onImportCards(cardsToCommit);
-      onClose();
-      // Reset state
-      setRawMarkdown('');
-      setParsedCards([]);
-      setActiveTab('prompt');
+      if (skipped > 0) {
+        // 一部スキップした場合は閉じずに結果を表示する
+        setRawMarkdown('');
+        setParsedCards([]);
+        setSelectedCardIds(new Set());
+        setActiveTab('paste');
+        setParseErrors([]);
+        setParseWarnings([
+          `${cardsToCommit.length}枚を取り込みました。${skipped}枚は既存カードと重複していたためスキップしました。`,
+        ]);
+      } else {
+        onClose();
+        setRawMarkdown('');
+        setParsedCards([]);
+        setActiveTab('prompt');
+      }
     } catch (e: any) {
       setParseErrors([e.message || 'インポート中にエラーが発生しました。']);
     } finally {
@@ -170,14 +201,11 @@ export const KnowledgeImportModal: React.FC<KnowledgeImportModalProps> = ({
     }
   };
 
-  // Check for duplicate in existingCards
-  const isDuplicate = (card: KnowledgeCard) => {
-    return existingCards.some(
-      (ec) =>
-        ec.title.trim().toLowerCase() === card.title.trim().toLowerCase() ||
-        ec.question.trim().slice(0, 30) === card.question.trim().slice(0, 30)
-    );
-  };
+  // 重複判定：タイトル＋問題文（空白を正規化）が既存カードと一致したら重複として取り込み禁止
+  const cardKey = (c: KnowledgeCard) =>
+    `${c.title.trim()}\n${c.question.trim().replace(/\s+/g, ' ')}`;
+  const existingCardKeys = new Set(existingCards.map(cardKey));
+  const isDuplicate = (card: KnowledgeCard) => existingCardKeys.has(cardKey(card));
 
   return (
     <div
@@ -468,8 +496,9 @@ export const KnowledgeImportModal: React.FC<KnowledgeImportModalProps> = ({
                       <input
                         type="checkbox"
                         checked={isSelected}
+                        disabled={duplicate}
                         onChange={() => handleToggleCardSelection(card.id)}
-                        className="mt-1 h-4 w-4 text-emerald-600 focus:ring-emerald-500 rounded border-slate-300 cursor-pointer"
+                        className="mt-1 h-4 w-4 text-emerald-600 focus:ring-emerald-500 rounded border-slate-300 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                       />
 
                       <div className="flex-1 space-y-1.5">
@@ -489,8 +518,8 @@ export const KnowledgeImportModal: React.FC<KnowledgeImportModalProps> = ({
                             </span>
                           )}
                           {duplicate && (
-                            <span className="text-[11px] bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded">
-                              ※既存カードと類似の可能性あり
+                            <span className="text-[11px] bg-red-100 text-red-800 font-bold px-2 py-0.5 rounded">
+                              ※既存カードと重複（取り込み不可）
                             </span>
                           )}
                         </div>
